@@ -1,4 +1,5 @@
 @echo off
+call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 rem Switch Command Prompt to UTF-8 to display Unicode characters correctly
 chcp 65001 > nul
 cls
@@ -10,7 +11,7 @@ set APP_NAME=MiniPaint
 
 echo.
 echo ===========================================
-echo      ENHANCED MINI PAINT BUILD SCRIPT
+echo      FULL MINI PAINT BUILD SCRIPT
 echo ===========================================
 echo.
 
