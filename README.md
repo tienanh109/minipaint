@@ -32,7 +32,7 @@ Feel free to explore the code, learn from it, and even build upon it for your ow
 Alternatively, you can build the project quickly by running the provided build script:
 
 ```bash
-build.cmd
+build.cmd or clean-build.cmd
 ```
 
 Make sure you have Visual Studio Build Tools installed and available in your system PATH.
