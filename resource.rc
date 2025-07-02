@@ -1,0 +1,23 @@
+#include <windows.h>
+
+#define IDI_MYICON          101
+#define IDD_WIDTH_DIALOG    102
+#define IDR_HTML_ABOUT      103
+
+// Icon declaration, path updated for new structure
+IDI_MYICON   ICON    "assets/myicon.ico"
+
+// HTML resource declaration, path updated for new structure
+IDR_HTML_ABOUT   HTML    "assets/index.html"
+
+// Dialog declaration
+IDD_WIDTH_DIALOG DIALOGEX 0, 0, 180, 50
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Set Pen Width"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    DEFPUSHBUTTON   "OK",IDOK,123,7,50,14
+    PUSHBUTTON      "Cancel",IDCANCEL,123,25,50,14
+    EDITTEXT        101,35,15,40,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Width (1-99):",-1,7,18,60,8
+END
