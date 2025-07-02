@@ -2,15 +2,17 @@
 
 #define IDI_MYICON          101
 #define IDD_WIDTH_DIALOG    102
-#define IDR_HTML_ABOUT      103
+#define IDB_ABOUT_BANNER    104 // New ID for the banner bitmap
 
-// Icon declaration, path updated for new structure
-IDI_MYICON   ICON    "assets/myicon.ico"
+// Icon declaration
+// Make sure you have a "myicon.ico" file in the "assets" folder.
+IDI_MYICON      ICON    "assets/myicon.ico"
 
-// HTML resource declaration, path updated for new structure
-IDR_HTML_ABOUT   HTML    "assets/index.html"
+// Bitmap resource declaration for the About box banner
+// Make sure you have a "banner.bmp" file in the "assets" folder.
+IDB_ABOUT_BANNER BITMAP "assets/banner.bmp"
 
-// Dialog declaration
+// Dialog declaration for Pen Width
 IDD_WIDTH_DIALOG DIALOGEX 0, 0, 180, 50
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "Set Pen Width"
