@@ -1,4 +1,5 @@
 @echo off
+rem add flag 02 to avoid defenders from sweeping by mistake
 call "C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 chcp 65001 > nul
 
