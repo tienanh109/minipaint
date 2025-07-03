@@ -36,6 +36,7 @@ build.cmd
 ```
 > [!NOTE]
 > Make sure you have Visual Studio Build Tools installed and available in your system PATH.
+> 
 > Building for arm64 may cause errors.
 
 ---
