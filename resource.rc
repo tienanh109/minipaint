@@ -1,6 +1,5 @@
 #include <windows.h>
 
-
 #define IDI_MYICON          101
 #define IDD_WIDTH_DIALOG    102
 #define IDB_ABOUT_BANNER    104 // New ID for the banner bitmap
