@@ -370,7 +370,7 @@ LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             hCtrl = CreateWindowW(L"STATIC", L"Mini Paint", WS_CHILD | WS_VISIBLE | SS_CENTER, margin, yPos, controlWidth, 25, hwnd, NULL, NULL, NULL);
             SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTitleFont, TRUE);
             yPos += 40;
-            hCtrl = CreateWindowW(L"STATIC", L"Version 1.0", WS_CHILD | WS_VISIBLE | SS_LEFT, margin, yPos, controlWidth, 20, hwnd, NULL, NULL, NULL);
+            hCtrl = CreateWindowW(L"STATIC", L"Version 1.1", WS_CHILD | WS_VISIBLE | SS_LEFT, margin, yPos, controlWidth, 20, hwnd, NULL, NULL, NULL);
             SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
             yPos += 25;
             hCtrl = CreateWindowW(L"STATIC", L"Author:", WS_CHILD | WS_VISIBLE | SS_LEFT, margin, yPos, 50, 20, hwnd, NULL, NULL, NULL);
