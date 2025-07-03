@@ -2,7 +2,7 @@
 
 **Mini Paint for Windows!! (make just for fun)**
 
-A small and cute C++ painting application for Windows, made with love by **tienanh109**.
+A small and cute C++ painting application for Windows, made by **tienanh109**.
 
 This project is a fun little experiment to create a simple painting program for Windows using native Win32 API with C++.  
 Feel free to explore the code, learn from it, and even build upon it for your own projects — but please remember to give proper credit! 😊
@@ -32,10 +32,11 @@ Feel free to explore the code, learn from it, and even build upon it for your ow
 Alternatively, you can build the project quickly by running the provided build script:
 
 ```bash
-build.cmd or clean-build.cmd
+build.cmd
 ```
-
-Make sure you have Visual Studio Build Tools installed and available in your system PATH.
+> [!NOTE]
+> Make sure you have Visual Studio Build Tools installed and available in your system PATH.
+> Building for arm64 may cause errors.
 
 ---
 
