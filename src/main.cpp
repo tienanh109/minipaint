@@ -1,8 +1,6 @@
 #define UNICODE
 #define _UNICODE
 
-
-
 #include <windows.h>
 #include <windowsx.h>
 #include <commdlg.h>
@@ -10,6 +8,12 @@
 #include <shellapi.h> // Required for ShellExecuteW to open URLs
 
 #pragma comment(lib, "comctl32.lib") // Required for SysLink control
+#pragma comment(lib, "shell32.lib")  // Required for ShellExecuteW
+
+// This pragma ensures the application uses version 6 of the Common Controls library,
+// which is required for modern controls like the SysLink control (WC_LINK).
+#pragma comment(linker,"/manifestdependency:\"type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'\"")
+
 
 // --- Resource IDs ---
 #define IDI_MYICON          101
@@ -18,6 +22,7 @@
 
 // --- Control IDs for About Box ---
 #define IDC_LINK_GITHUB     1001
+// IDC_BANNER_STATIC is no longer needed as we will draw the banner manually
 
 // --- Menu Item IDs ---
 #define IDM_FILE_NEW        1
@@ -69,8 +74,6 @@ void UpdateToolMenuCheck(HWND);
 
 // --- WinMain ---
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
-    // COM and ATL initializations are no longer needed for a native UI.
-
     INITCOMMONCONTROLSEX icex = { sizeof(INITCOMMONCONTROLSEX), ICC_BAR_CLASSES | ICC_LINK_CLASS };
     InitCommonControlsEx(&icex);
 
@@ -110,7 +113,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         DispatchMessage(&msg);
     }
 
-    // CoUninitialize is no longer needed.
     return (int)msg.wParam;
 }
 
@@ -279,87 +281,109 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 // --- About Window ---
 void ShowAboutWindow(HWND owner) {
     const wchar_t ABOUT_CLASS_NAME[] = L"AboutWindowClass";
-    // Adjusted window size for the new layout
+    // Adjusted window size for better layout
     HWND hwndAbout = CreateWindowEx(
         WS_EX_DLGMODALFRAME, ABOUT_CLASS_NAME, L"About Mini Paint",
-        WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
-        CW_USEDEFAULT, CW_USEDEFAULT, 450, 380,
-        owner, NULL, GetModuleHandle(NULL), NULL);
+        WS_CAPTION | WS_SYSMENU, 
+        CW_USEDEFAULT, CW_USEDEFAULT, 380, 420, // Adjusted width and height
+        owner, NULL, GetModuleHandle(NULL), (LPVOID)owner); 
 
-    RECT rcOwner, rcDlg;
-    GetWindowRect(owner, &rcOwner);
-    GetWindowRect(hwndAbout, &rcDlg);
-    SetWindowPos(hwndAbout, NULL,
-        rcOwner.left + (rcOwner.right - rcOwner.left - (rcDlg.right - rcDlg.left)) / 2,
-        rcOwner.top + (rcOwner.bottom - rcOwner.top - (rcDlg.bottom - rcDlg.top)) / 2,
-        0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-
-    EnableWindow(owner, FALSE);
-    SetForegroundWindow(hwndAbout);
-    ShowWindow(hwndAbout, SW_SHOW);
+    if (hwndAbout) {
+        EnableWindow(owner, FALSE);
+        ShowWindow(hwndAbout, SW_SHOW);
+        SetForegroundWindow(hwndAbout);
+    }
 }
 
-// Rewritten About Window Procedure to use native Win32 controls
+// Rewritten About Window Procedure to manually draw the banner for proper scaling
 LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     static HBITMAP hBannerBitmap = NULL;
     static HFONT hTitleFont = NULL;
     static HFONT hTextFont = NULL;
+    static HWND hOwner = NULL;
 
     switch (msg) {
         case WM_CREATE: {
-            // Load the banner bitmap from resources
-            hBannerBitmap = (HBITMAP)LoadImage(GetModuleHandle(NULL), MAKEINTRESOURCE(IDB_ABOUT_BANNER), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
+            CREATESTRUCT* pCreate = (CREATESTRUCT*)lParam;
+            hOwner = (HWND)pCreate->lpCreateParams;
 
-            // Create fonts for the text
+            hBannerBitmap = (HBITMAP)LoadImageW(GetModuleHandle(NULL), MAKEINTRESOURCEW(IDB_ABOUT_BANNER), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
+            if (hBannerBitmap == NULL) {
+                MessageBox(hOwner, L"Could not load banner resource (IDB_ABOUT_BANNER)!", L"Resource Error", MB_OK | MB_ICONERROR);
+                return -1; 
+            }
+
             LOGFONT lf = {};
             GetObject(GetStockObject(DEFAULT_GUI_FONT), sizeof(LOGFONT), &lf);
-            lf.lfHeight = 24; // Taller font for the title
+            
+            lf.lfHeight = 24;
             lf.lfWeight = FW_BOLD;
             hTitleFont = CreateFontIndirect(&lf);
 
-            lf.lfHeight = 16; // Standard font for other text
+            lf.lfHeight = 16;
             lf.lfWeight = FW_NORMAL;
             hTextFont = CreateFontIndirect(&lf);
 
-            // Create static text controls and the hyperlink
-            int yPos = 140; // Starting Y position below the banner
-            HWND hTitle = CreateWindowW(L"STATIC", L"Mini Paint", WS_CHILD | WS_VISIBLE | SS_CENTER,
-                10, yPos, 410, 25, hwnd, NULL, NULL, NULL);
-            SendMessage(hTitle, WM_SETFONT, (WPARAM)hTitleFont, TRUE);
+            // Define a fixed height for the banner area for layout calculations
+            int bannerHeight = 120;
+            int yPos = bannerHeight + 15; // Start controls below the banner area
+
+            HWND hCtrl;
+
+            hCtrl = CreateWindowW(L"STATIC", L"Mini Paint", WS_CHILD | WS_VISIBLE | SS_CENTER, 10, yPos, 340, 25, hwnd, NULL, NULL, NULL);
+            SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTitleFont, TRUE);
 
             yPos += 40;
-            HWND hVersion = CreateWindowW(L"STATIC", L"Version 1.0", WS_CHILD | WS_VISIBLE | SS_LEFT,
-                20, yPos, 200, 20, hwnd, NULL, NULL, NULL);
-            SendMessage(hVersion, WM_SETFONT, (WPARAM)hTextFont, TRUE);
+            hCtrl = CreateWindowW(L"STATIC", L"Version 1.0", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, yPos, 200, 20, hwnd, NULL, NULL, NULL);
+            SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
 
             yPos += 25;
-            // Use SysLink control for the clickable link
-            HWND hDeveloper = CreateWindowW(WC_LINK,
-                L"Developer: <A HREF=\"https://github.com/tienanh109\">tienanh109</A>",
-                WS_CHILD | WS_VISIBLE,
-                20, yPos, 400, 20, hwnd, (HMENU)IDC_LINK_GITHUB, NULL, NULL);
-            SendMessage(hDeveloper, WM_SETFONT, (WPARAM)hTextFont, TRUE);
+            hCtrl = CreateWindowW(WC_LINK, L"Developer: <A HREF=\"https://github.com/tienanh109\">tienanh109</A>", WS_CHILD | WS_VISIBLE, 20, yPos, 340, 20, hwnd, (HMENU)IDC_LINK_GITHUB, NULL, NULL);
+            SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
 
             yPos += 25;
-            HWND hSource = CreateWindowW(L"STATIC", L"Source Code: Win32 API", WS_CHILD | WS_VISIBLE | SS_LEFT,
-                20, yPos, 300, 20, hwnd, NULL, NULL, NULL);
-            SendMessage(hSource, WM_SETFONT, (WPARAM)hTextFont, TRUE);
+            hCtrl = CreateWindowW(L"STATIC", L"Source Code: Win32 API", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, yPos, 300, 20, hwnd, NULL, NULL, NULL);
+            SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
 
             yPos += 50;
-            HWND hOkButton = CreateWindowW(L"BUTTON", L"OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-                175, yPos, 100, 30, hwnd, (HMENU)IDOK, NULL, NULL);
-            SendMessage(hOkButton, WM_SETFONT, (WPARAM)hTextFont, TRUE);
+            hCtrl = CreateWindowW(L"BUTTON", L"OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 135, yPos, 100, 30, hwnd, (HMENU)IDOK, NULL, NULL);
+            SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
 
+            return 0;
+        }
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC hdc = BeginPaint(hwnd, &ps);
+
+            if (hBannerBitmap) {
+                RECT rcClient;
+                GetClientRect(hwnd, &rcClient);
+
+                // Define a fixed height for the banner area
+                int bannerHeight = 120;
+
+                HDC hdcMem = CreateCompatibleDC(hdc);
+                HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hBannerBitmap);
+                BITMAP bm;
+                GetObject(hBannerBitmap, sizeof(bm), &bm);
+
+                // Draw the banner, stretching it to fit the full width of the window
+                // This will scale the image to fit the 360x120 area.
+                StretchBlt(hdc, 0, 0, rcClient.right, bannerHeight, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
+
+                SelectObject(hdcMem, hbmOld);
+                DeleteDC(hdcMem);
+            }
+
+            EndPaint(hwnd, &ps);
             break;
         }
         case WM_COMMAND:
-            // Handle the OK button click
-            if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL) {
-                PostMessage(hwnd, WM_CLOSE, 0, 0);
+            if (LOWORD(wParam) == IDOK) {
+                DestroyWindow(hwnd);
             }
             break;
         case WM_NOTIFY: {
-            // Handle the hyperlink click
             LPNMHDR pnmh = (LPNMHDR)lParam;
             if (pnmh->code == NM_CLICK && pnmh->idFrom == IDC_LINK_GITHUB) {
                 PNMLINK pNMLink = (PNMLINK)pnmh;
@@ -367,38 +391,21 @@ LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
             break;
         }
-        case WM_PAINT: {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-
-            // Draw the banner at the top
-            if (hBannerBitmap) {
-                HDC hdcMem = CreateCompatibleDC(hdc);
-                HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hBannerBitmap);
-                BITMAP bm;
-                GetObject(hBannerBitmap, sizeof(bm), &bm);
-                // Stretch the bitmap to fit the banner area (e.g., 434x120)
-                StretchBlt(hdc, 0, 0, 434, 120, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
-                SelectObject(hdcMem, hbmOld);
-                DeleteDC(hdcMem);
-            }
-            EndPaint(hwnd, &ps);
-            break;
-        }
         case WM_CTLCOLORSTATIC: {
-            // Make the background of static controls transparent
             HDC hdcStatic = (HDC)wParam;
             SetBkMode(hdcStatic, TRANSPARENT);
             return (LRESULT)GetStockObject(NULL_BRUSH);
         }
         case WM_CLOSE: {
-            EnableWindow(GetParent(hwnd), TRUE);
-            SetForegroundWindow(GetParent(hwnd));
             DestroyWindow(hwnd);
             break;
         }
         case WM_DESTROY: {
-            // Clean up GDI objects
+            if (hOwner) {
+                EnableWindow(hOwner, TRUE);
+                SetForegroundWindow(hOwner);
+            }
+            
             if (hBannerBitmap) DeleteObject(hBannerBitmap);
             if (hTitleFont) DeleteObject(hTitleFont);
             if (hTextFont) DeleteObject(hTextFont);
@@ -545,6 +552,7 @@ void SaveCanvasAsBitmap(HWND hwnd) {
 }
 
 INT_PTR CALLBACK PenWidthDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
+    UNREFERENCED_PARAMETER(lParam); 
     switch (message) {
         case WM_INITDIALOG:
             SetDlgItemInt(hDlg, IDC_WIDTH_EDIT, g_appState.penWidth, FALSE);
