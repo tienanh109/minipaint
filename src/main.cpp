@@ -17,30 +17,31 @@
 
 // --- Resource IDs ---
 #define IDI_MYICON          101
-#define IDD_WIDTH_DIALOG    102
-#define IDB_ABOUT_BANNER    104 // New ID for the banner bitmap
+#define IDB_ABOUT_BANNER    104 
 
-// --- Control IDs for About Box ---
-#define IDC_LINK_GITHUB     1001
-// IDC_BANNER_STATIC is no longer needed as we will draw the banner manually
+// --- Control IDs ---
+#define IDC_AUTHOR_LINK     1001 
+#define IDC_WIDTH_EDIT      101
 
 // --- Menu Item IDs ---
 #define IDM_FILE_NEW        1
-#define IDM_FILE_SAVE       2
-#define IDM_FILE_EXIT       3
-#define IDM_EDIT_UNDO       4
-#define IDM_TOOL_PEN        5
-#define IDM_TOOL_ERASER     6
-#define IDM_TOOL_LINE       7
-#define IDM_TOOL_RECTANGLE  8
-#define IDM_TOOL_ELLIPSE    9
-#define IDM_OPTIONS_COLOR   10
-#define IDM_OPTIONS_WIDTH   11
-#define IDM_HELP_ABOUT      12
-#define IDC_WIDTH_EDIT      101
+#define IDM_FILE_OPEN       2 
+#define IDM_FILE_SAVE       3
+#define IDM_FILE_EXIT       4
+#define IDM_EDIT_UNDO       5
+#define IDM_TOOL_PEN        6
+#define IDM_TOOL_ERASER     7
+#define IDM_TOOL_LINE       8
+#define IDM_TOOL_RECTANGLE  9
+#define IDM_TOOL_ELLIPSE    10
+#define IDM_TOOL_FILL       11 // New ID for the Fill Bucket tool
+#define IDM_OPTIONS_COLOR   12
+#define IDM_OPTIONS_WIDTH   13
+#define IDM_HELP_ABOUT      14
+
 
 // --- Application State ---
-enum Tool { TOOL_PEN, TOOL_ERASER, TOOL_LINE, TOOL_RECTANGLE, TOOL_ELLIPSE };
+enum Tool { TOOL_PEN, TOOL_ERASER, TOOL_LINE, TOOL_RECTANGLE, TOOL_ELLIPSE, TOOL_FILL };
 struct AppState {
     Tool currentTool;
     COLORREF currentColor;
@@ -60,14 +61,16 @@ int g_canvasWidth = 0, g_canvasHeight = 0;
 // --- Function Prototypes ---
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 LRESULT CALLBACK AboutWndProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK PenWidthDlgProc(HWND, UINT, WPARAM, LPARAM);
+LRESULT CALLBACK PenWidthWndProc(HWND, UINT, WPARAM, LPARAM); // New procedure for our custom dialog
 void CreateMainMenu(HWND);
 void ShowAboutWindow(HWND);
+void ShowPenWidthWindow(HWND); // New function to show our custom dialog
 void UpdateStatusBar(POINT);
 void CreateAndSizeBuffers(HWND, int, int);
 void CleanupBuffers();
 void ClearCanvas(HDC, int, int);
 void SaveCanvasAsBitmap(HWND);
+void LoadBitmapFromFile(HWND); 
 void SaveUndoState();
 void RestoreUndoState();
 void UpdateToolMenuCheck(HWND);
@@ -97,6 +100,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     wcAbout.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MYICON));
     RegisterClass(&wcAbout);
 
+    // Register class for our new Pen Width dialog
+    const wchar_t WIDTH_CLASS_NAME[] = L"PenWidthWindowClass";
+    WNDCLASS wcWidth = {};
+    wcWidth.lpfnWndProc = PenWidthWndProc;
+    wcWidth.hInstance = hInstance;
+    wcWidth.lpszClassName = WIDTH_CLASS_NAME;
+    wcWidth.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
+    wcWidth.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wcWidth.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_MYICON));
+    RegisterClass(&wcWidth);
+
+
     HWND hwnd = CreateWindowEx(0, MAIN_CLASS_NAME, L"Mini Paint", WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT, CW_USEDEFAULT, 800, 600, NULL, NULL, hInstance, NULL);
 
@@ -104,15 +119,31 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
         return 0;
     }
 
+    // --- Accelerator Table for Keyboard Shortcuts ---
+    ACCEL accels[] = {
+        { FCONTROL | FVIRTKEY, 'N', IDM_FILE_NEW },
+        { FCONTROL | FVIRTKEY, 'O', IDM_FILE_OPEN },
+        { FCONTROL | FVIRTKEY, 'S', IDM_FILE_SAVE },
+        { FCONTROL | FVIRTKEY, 'Z', IDM_EDIT_UNDO }
+    };
+    HACCEL hAccel = CreateAcceleratorTable(accels, sizeof(accels) / sizeof(ACCEL));
+    if (hAccel == NULL) {
+        MessageBox(hwnd, L"Could not create accelerator table.", L"Error", MB_OK | MB_ICONERROR);
+    }
+
     ShowWindow(hwnd, nCmdShow);
     UpdateWindow(hwnd);
 
+    // --- Modified Message Loop to handle accelerators ---
     MSG msg = {};
     while (GetMessage(&msg, NULL, 0, 0) > 0) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
+        if (!TranslateAccelerator(hwnd, hAccel, &msg)) {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+        }
     }
 
+    DestroyAcceleratorTable(hAccel); // Clean up the accelerator table
     return (int)msg.wParam;
 }
 
@@ -150,6 +181,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                         InvalidateRect(hwnd, NULL, TRUE);
                     }
                     break;
+                case IDM_FILE_OPEN: LoadBitmapFromFile(hwnd); break;
                 case IDM_FILE_SAVE: SaveCanvasAsBitmap(hwnd); break;
                 case IDM_FILE_EXIT: DestroyWindow(hwnd); break;
                 case IDM_EDIT_UNDO:
@@ -164,6 +196,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                 case IDM_TOOL_LINE: g_appState.currentTool = TOOL_LINE; SetCursor(LoadCursor(NULL, IDC_CROSS)); break;
                 case IDM_TOOL_RECTANGLE: g_appState.currentTool = TOOL_RECTANGLE; SetCursor(LoadCursor(NULL, IDC_CROSS)); break;
                 case IDM_TOOL_ELLIPSE: g_appState.currentTool = TOOL_ELLIPSE; SetCursor(LoadCursor(NULL, IDC_CROSS)); break;
+                case IDM_TOOL_FILL: g_appState.currentTool = TOOL_FILL; SetCursor(LoadCursor(NULL, IDC_ARROW)); break; // Using arrow cursor for fill
                 case IDM_OPTIONS_COLOR: {
                     CHOOSECOLOR cc = {};
                     static COLORREF acrCustClr[16];
@@ -177,21 +210,36 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
                     }
                 } break;
                 case IDM_OPTIONS_WIDTH:
-                    DialogBox(GetModuleHandle(NULL), MAKEINTRESOURCE(IDD_WIDTH_DIALOG), hwnd, PenWidthDlgProc);
+                    ShowPenWidthWindow(hwnd); // Show our new custom dialog
                     break;
             }
             UpdateToolMenuCheck(hwnd);
             break;
         }
         case WM_LBUTTONDOWN: {
-            SaveUndoState();
-            g_appState.isDrawing = true;
-            g_appState.startPoint.x = GET_X_LPARAM(lParam);
-            g_appState.startPoint.y = GET_Y_LPARAM(lParam);
-            g_appState.currentPoint = g_appState.startPoint;
-            SetCapture(hwnd);
-            if (g_appState.currentTool == TOOL_PEN || g_appState.currentTool == TOOL_ERASER) {
-                MoveToEx(g_hdcBuffer, g_appState.startPoint.x, g_appState.startPoint.y, NULL);
+            if (g_appState.currentTool == TOOL_FILL) {
+                POINT pt = { GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam) };
+                COLORREF targetColor = GetPixel(g_hdcBuffer, pt.x, pt.y);
+                if (targetColor != g_appState.currentColor) {
+                    SaveUndoState();
+                    HBRUSH hBrush = CreateSolidBrush(g_appState.currentColor);
+                    HBRUSH hOldBrush = (HBRUSH)SelectObject(g_hdcBuffer, hBrush);
+                    // Use ExtFloodFill as it's generally more reliable
+                    ExtFloodFill(g_hdcBuffer, pt.x, pt.y, targetColor, FLOODFILLSURFACE);
+                    SelectObject(g_hdcBuffer, hOldBrush);
+                    DeleteObject(hBrush);
+                    InvalidateRect(hwnd, NULL, FALSE);
+                }
+            } else {
+                SaveUndoState();
+                g_appState.isDrawing = true;
+                g_appState.startPoint.x = GET_X_LPARAM(lParam);
+                g_appState.startPoint.y = GET_Y_LPARAM(lParam);
+                g_appState.currentPoint = g_appState.startPoint;
+                SetCapture(hwnd);
+                if (g_appState.currentTool == TOOL_PEN || g_appState.currentTool == TOOL_ERASER) {
+                    MoveToEx(g_hdcBuffer, g_appState.startPoint.x, g_appState.startPoint.y, NULL);
+                }
             }
             break;
         }
@@ -281,11 +329,10 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 // --- About Window ---
 void ShowAboutWindow(HWND owner) {
     const wchar_t ABOUT_CLASS_NAME[] = L"AboutWindowClass";
-    // Adjusted window size for better layout
     HWND hwndAbout = CreateWindowEx(
         WS_EX_DLGMODALFRAME, ABOUT_CLASS_NAME, L"About Mini Paint",
         WS_CAPTION | WS_SYSMENU, 
-        CW_USEDEFAULT, CW_USEDEFAULT, 380, 420, // Adjusted width and height
+        CW_USEDEFAULT, CW_USEDEFAULT, 380, 420, 
         owner, NULL, GetModuleHandle(NULL), (LPVOID)owner); 
 
     if (hwndAbout) {
@@ -295,122 +342,163 @@ void ShowAboutWindow(HWND owner) {
     }
 }
 
-// Rewritten About Window Procedure to manually draw the banner for proper scaling
 LRESULT CALLBACK AboutWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
     static HBITMAP hBannerBitmap = NULL;
     static HFONT hTitleFont = NULL;
     static HFONT hTextFont = NULL;
+    static HFONT hLinkFont = NULL;
     static HWND hOwner = NULL;
+    static HWND hFakeLink = NULL;
 
     switch (msg) {
         case WM_CREATE: {
             CREATESTRUCT* pCreate = (CREATESTRUCT*)lParam;
             hOwner = (HWND)pCreate->lpCreateParams;
-
             hBannerBitmap = (HBITMAP)LoadImageW(GetModuleHandle(NULL), MAKEINTRESOURCEW(IDB_ABOUT_BANNER), IMAGE_BITMAP, 0, 0, LR_DEFAULTCOLOR);
-            if (hBannerBitmap == NULL) {
-                MessageBox(hOwner, L"Could not load banner resource (IDB_ABOUT_BANNER)!", L"Resource Error", MB_OK | MB_ICONERROR);
-                return -1; 
-            }
-
             LOGFONT lf = {};
             GetObject(GetStockObject(DEFAULT_GUI_FONT), sizeof(LOGFONT), &lf);
-            
-            lf.lfHeight = 24;
-            lf.lfWeight = FW_BOLD;
+            lf.lfHeight = 24; lf.lfWeight = FW_BOLD;
             hTitleFont = CreateFontIndirect(&lf);
-
-            lf.lfHeight = 16;
-            lf.lfWeight = FW_NORMAL;
+            lf.lfHeight = 16; lf.lfWeight = FW_NORMAL; lf.lfUnderline = FALSE;
             hTextFont = CreateFontIndirect(&lf);
-
-            // Define a fixed height for the banner area for layout calculations
-            int bannerHeight = 120;
-            int yPos = bannerHeight + 15; // Start controls below the banner area
-
+            lf.lfUnderline = TRUE;
+            hLinkFont = CreateFontIndirect(&lf);
+            RECT rcClient; GetClientRect(hwnd, &rcClient);
+            int clientWidth = rcClient.right; int margin = 20; int controlWidth = clientWidth - (2 * margin);
+            int bannerHeight = 120; int yPos = bannerHeight + 15;
             HWND hCtrl;
-
-            hCtrl = CreateWindowW(L"STATIC", L"Mini Paint", WS_CHILD | WS_VISIBLE | SS_CENTER, 10, yPos, 340, 25, hwnd, NULL, NULL, NULL);
+            hCtrl = CreateWindowW(L"STATIC", L"Mini Paint", WS_CHILD | WS_VISIBLE | SS_CENTER, margin, yPos, controlWidth, 25, hwnd, NULL, NULL, NULL);
             SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTitleFont, TRUE);
-
             yPos += 40;
-            hCtrl = CreateWindowW(L"STATIC", L"Version 1.0", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, yPos, 200, 20, hwnd, NULL, NULL, NULL);
+            hCtrl = CreateWindowW(L"STATIC", L"Version 1.0", WS_CHILD | WS_VISIBLE | SS_LEFT, margin, yPos, controlWidth, 20, hwnd, NULL, NULL, NULL);
             SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
-
             yPos += 25;
-            hCtrl = CreateWindowW(WC_LINK, L"Developer: <A HREF=\"https://github.com/tienanh109\">tienanh109</A>", WS_CHILD | WS_VISIBLE, 20, yPos, 340, 20, hwnd, (HMENU)IDC_LINK_GITHUB, NULL, NULL);
+            hCtrl = CreateWindowW(L"STATIC", L"Author:", WS_CHILD | WS_VISIBLE | SS_LEFT, margin, yPos, 50, 20, hwnd, NULL, NULL, NULL);
             SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
-
+            hFakeLink = CreateWindowW(L"STATIC", L"tienanh109", WS_CHILD | WS_VISIBLE | SS_NOTIFY, margin + 50, yPos, 150, 20, hwnd, (HMENU)IDC_AUTHOR_LINK, NULL, NULL);
+            SendMessage(hFakeLink, WM_SETFONT, (WPARAM)hLinkFont, TRUE);
             yPos += 25;
-            hCtrl = CreateWindowW(L"STATIC", L"Source Code: Win32 API", WS_CHILD | WS_VISIBLE | SS_LEFT, 20, yPos, 300, 20, hwnd, NULL, NULL, NULL);
+            hCtrl = CreateWindowW(L"STATIC", L"Library: Win32", WS_CHILD | WS_VISIBLE | SS_LEFT, margin, yPos, controlWidth, 20, hwnd, NULL, NULL, NULL);
             SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
-
             yPos += 50;
-            hCtrl = CreateWindowW(L"BUTTON", L"OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, 135, yPos, 100, 30, hwnd, (HMENU)IDOK, NULL, NULL);
+            int buttonWidth = 100; int buttonHeight = 30; int buttonX = (clientWidth - buttonWidth) / 2;
+            hCtrl = CreateWindowW(L"BUTTON", L"OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON, buttonX, yPos, buttonWidth, buttonHeight, hwnd, (HMENU)IDOK, NULL, NULL);
             SendMessage(hCtrl, WM_SETFONT, (WPARAM)hTextFont, TRUE);
-
             return 0;
         }
         case WM_PAINT: {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-
+            PAINTSTRUCT ps; HDC hdc = BeginPaint(hwnd, &ps);
             if (hBannerBitmap) {
-                RECT rcClient;
-                GetClientRect(hwnd, &rcClient);
-
-                // Define a fixed height for the banner area
-                int bannerHeight = 120;
-
-                HDC hdcMem = CreateCompatibleDC(hdc);
-                HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hBannerBitmap);
-                BITMAP bm;
-                GetObject(hBannerBitmap, sizeof(bm), &bm);
-
-                // Draw the banner, stretching it to fit the full width of the window
-                // This will scale the image to fit the 360x120 area.
+                RECT rcClient; GetClientRect(hwnd, &rcClient); int bannerHeight = 120;
+                HDC hdcMem = CreateCompatibleDC(hdc); HBITMAP hbmOld = (HBITMAP)SelectObject(hdcMem, hBannerBitmap);
+                BITMAP bm; GetObject(hBannerBitmap, sizeof(bm), &bm);
                 StretchBlt(hdc, 0, 0, rcClient.right, bannerHeight, hdcMem, 0, 0, bm.bmWidth, bm.bmHeight, SRCCOPY);
-
-                SelectObject(hdcMem, hbmOld);
-                DeleteDC(hdcMem);
+                SelectObject(hdcMem, hbmOld); DeleteDC(hdcMem);
             }
-
-            EndPaint(hwnd, &ps);
-            break;
+            EndPaint(hwnd, &ps); break;
         }
         case WM_COMMAND:
-            if (LOWORD(wParam) == IDOK) {
-                DestroyWindow(hwnd);
+            if (LOWORD(wParam) == IDOK) { DestroyWindow(hwnd); }
+            else if (LOWORD(wParam) == IDC_AUTHOR_LINK && HIWORD(wParam) == STN_CLICKED) {
+                ShellExecuteW(NULL, L"open", L"https://github.com/tienanh109", NULL, NULL, SW_SHOWNORMAL);
             }
             break;
-        case WM_NOTIFY: {
-            LPNMHDR pnmh = (LPNMHDR)lParam;
-            if (pnmh->code == NM_CLICK && pnmh->idFrom == IDC_LINK_GITHUB) {
-                PNMLINK pNMLink = (PNMLINK)pnmh;
-                ShellExecuteW(NULL, L"open", pNMLink->item.szUrl, NULL, NULL, SW_SHOWNORMAL);
-            }
+        case WM_SETCURSOR:
+            if ((HWND)wParam == hFakeLink) { SetCursor(LoadCursor(NULL, IDC_HAND)); return TRUE; }
             break;
-        }
         case WM_CTLCOLORSTATIC: {
-            HDC hdcStatic = (HDC)wParam;
-            SetBkMode(hdcStatic, TRANSPARENT);
-            return (LRESULT)GetStockObject(NULL_BRUSH);
+            HDC hdcStatic = (HDC)wParam; HWND hCtrl = (HWND)lParam;
+            if (hCtrl == hFakeLink) {
+                SetTextColor(hdcStatic, RGB(0, 0, 255)); SetBkMode(hdcStatic, TRANSPARENT);
+                return (LRESULT)GetStockObject(NULL_BRUSH);
+            }
+            SetBkMode(hdcStatic, TRANSPARENT); return (LRESULT)GetStockObject(NULL_BRUSH);
         }
-        case WM_CLOSE: {
+        case WM_CLOSE: DestroyWindow(hwnd); break;
+        case WM_DESTROY:
+            if (hOwner) { EnableWindow(hOwner, TRUE); SetForegroundWindow(hOwner); }
+            if (hBannerBitmap) DeleteObject(hBannerBitmap); if (hTitleFont) DeleteObject(hTitleFont);
+            if (hTextFont) DeleteObject(hTextFont); if (hLinkFont) DeleteObject(hLinkFont);
+            break;
+        default: return DefWindowProc(hwnd, msg, wParam, lParam);
+    }
+    return 0;
+}
+
+// --- Pen Width Dialog ---
+void ShowPenWidthWindow(HWND owner) {
+    const wchar_t WIDTH_CLASS_NAME[] = L"PenWidthWindowClass";
+    // Center the dialog over the owner window
+    RECT rcOwner;
+    GetWindowRect(owner, &rcOwner);
+    int x = rcOwner.left + (rcOwner.right - rcOwner.left) / 2 - 150;
+    int y = rcOwner.top + (rcOwner.bottom - rcOwner.top) / 2 - 75;
+
+    HWND hwndWidth = CreateWindowEx(
+        WS_EX_DLGMODALFRAME, WIDTH_CLASS_NAME, L"Set Pen Width",
+        WS_CAPTION | WS_SYSMENU | WS_VISIBLE,
+        x, y, 300, 150,
+        owner, NULL, GetModuleHandle(NULL), NULL);
+
+    if (hwndWidth) {
+        EnableWindow(owner, FALSE);
+        SetForegroundWindow(hwndWidth);
+    }
+}
+
+LRESULT CALLBACK PenWidthWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
+    static HWND hOwner = NULL;
+    switch (msg) {
+        case WM_CREATE: {
+            hOwner = GetWindow(hwnd, GW_OWNER);
+            int margin = 20;
+            int yPos = 20;
+
+            CreateWindowW(L"STATIC", L"Pen Width (1-99):", WS_CHILD | WS_VISIBLE | SS_LEFT,
+                margin, yPos + 5, 120, 25, hwnd, NULL, NULL, NULL);
+
+            CreateWindowW(L"EDIT", L"", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER,
+                margin + 130, yPos, 120, 25, hwnd, (HMENU)IDC_WIDTH_EDIT, NULL, NULL);
+            
+            yPos += 50;
+            CreateWindowW(L"BUTTON", L"OK", WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+                margin + 40, yPos, 90, 30, hwnd, (HMENU)IDOK, NULL, NULL);
+
+            CreateWindowW(L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE,
+                margin + 140, yPos, 90, 30, hwnd, (HMENU)IDCANCEL, NULL, NULL);
+
+            // Set initial value
+            SetDlgItemInt(hwnd, IDC_WIDTH_EDIT, g_appState.penWidth, FALSE);
+            return 0;
+        }
+        case WM_COMMAND: {
+            switch (LOWORD(wParam)) {
+                case IDOK: {
+                    BOOL bSuccess;
+                    int newWidth = GetDlgItemInt(hwnd, IDC_WIDTH_EDIT, &bSuccess, FALSE);
+                    if (bSuccess && newWidth > 0 && newWidth <= 99) {
+                        g_appState.penWidth = newWidth;
+                    } else {
+                        MessageBox(hwnd, L"Please enter a number between 1 and 99.", L"Invalid Width", MB_OK | MB_ICONEXCLAMATION);
+                        return 0; // Don't close the dialog
+                    }
+                    // Fall through to destroy window
+                }
+                case IDCANCEL:
+                    DestroyWindow(hwnd);
+                    break;
+            }
+            return 0;
+        }
+        case WM_CLOSE:
             DestroyWindow(hwnd);
             break;
-        }
-        case WM_DESTROY: {
+        case WM_DESTROY:
             if (hOwner) {
                 EnableWindow(hOwner, TRUE);
                 SetForegroundWindow(hOwner);
             }
-            
-            if (hBannerBitmap) DeleteObject(hBannerBitmap);
-            if (hTitleFont) DeleteObject(hTitleFont);
-            if (hTextFont) DeleteObject(hTextFont);
             break;
-        }
         default:
             return DefWindowProc(hwnd, msg, wParam, lParam);
     }
@@ -427,6 +515,7 @@ void CreateMainMenu(HWND hwnd) {
     HMENU hMenuHelp = CreateMenu();
 
     AppendMenuW(hMenuFile, MF_STRING, IDM_FILE_NEW, L"&New\tCtrl+N");
+    AppendMenuW(hMenuFile, MF_STRING, IDM_FILE_OPEN, L"&Open...\tCtrl+O");
     AppendMenuW(hMenuFile, MF_STRING, IDM_FILE_SAVE, L"&Save\tCtrl+S");
     AppendMenuW(hMenuFile, MF_SEPARATOR, 0, NULL);
     AppendMenuW(hMenuFile, MF_STRING, IDM_FILE_EXIT, L"&Exit\tAlt+F4");
@@ -441,6 +530,8 @@ void CreateMainMenu(HWND hwnd) {
     AppendMenuW(hMenuTool, MF_STRING, IDM_TOOL_LINE, L"&Line");
     AppendMenuW(hMenuTool, MF_STRING, IDM_TOOL_RECTANGLE, L"&Rectangle");
     AppendMenuW(hMenuTool, MF_STRING, IDM_TOOL_ELLIPSE, L"&Ellipse");
+    AppendMenuW(hMenuTool, MF_SEPARATOR, 0, NULL);
+    AppendMenuW(hMenuTool, MF_STRING, IDM_TOOL_FILL, L"&Fill Bucket");
     AppendMenuW(hMenubar, MF_POPUP, (UINT_PTR)hMenuTool, L"&Tools");
 
     AppendMenuW(hMenuOptions, MF_STRING, IDM_OPTIONS_COLOR, L"&Color...");
@@ -455,12 +546,13 @@ void CreateMainMenu(HWND hwnd) {
 
 void UpdateToolMenuCheck(HWND hwnd) {
     HMENU hMenubar = GetMenu(hwnd);
-    HMENU hMenuTool = GetSubMenu(hMenubar, 2);
+    HMENU hMenuTool = GetSubMenu(hMenubar, 2); // Tools menu is at index 2
     CheckMenuItem(hMenuTool, IDM_TOOL_PEN, MF_BYCOMMAND | (g_appState.currentTool == TOOL_PEN ? MF_CHECKED : MF_UNCHECKED));
     CheckMenuItem(hMenuTool, IDM_TOOL_ERASER, MF_BYCOMMAND | (g_appState.currentTool == TOOL_ERASER ? MF_CHECKED : MF_UNCHECKED));
     CheckMenuItem(hMenuTool, IDM_TOOL_LINE, MF_BYCOMMAND | (g_appState.currentTool == TOOL_LINE ? MF_CHECKED : MF_UNCHECKED));
     CheckMenuItem(hMenuTool, IDM_TOOL_RECTANGLE, MF_BYCOMMAND | (g_appState.currentTool == TOOL_RECTANGLE ? MF_CHECKED : MF_UNCHECKED));
     CheckMenuItem(hMenuTool, IDM_TOOL_ELLIPSE, MF_BYCOMMAND | (g_appState.currentTool == TOOL_ELLIPSE ? MF_CHECKED : MF_UNCHECKED));
+    CheckMenuItem(hMenuTool, IDM_TOOL_FILL, MF_BYCOMMAND | (g_appState.currentTool == TOOL_FILL ? MF_CHECKED : MF_UNCHECKED));
 }
 
 void UpdateStatusBar(POINT cursorPos) {
@@ -551,27 +643,53 @@ void SaveCanvasAsBitmap(HWND hwnd) {
     }
 }
 
-INT_PTR CALLBACK PenWidthDlgProc(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam) {
-    UNREFERENCED_PARAMETER(lParam); 
-    switch (message) {
-        case WM_INITDIALOG:
-            SetDlgItemInt(hDlg, IDC_WIDTH_EDIT, g_appState.penWidth, FALSE);
-            return (INT_PTR)TRUE;
-        case WM_COMMAND:
-            if (LOWORD(wParam) == IDOK) {
-                BOOL bSuccess;
-                int newWidth = GetDlgItemInt(hDlg, IDC_WIDTH_EDIT, &bSuccess, FALSE);
-                if (bSuccess && newWidth > 0 && newWidth < 100) {
-                    g_appState.penWidth = newWidth;
-                }
-                EndDialog(hDlg, LOWORD(wParam));
-                return (INT_PTR)TRUE;
-            }
-            if (LOWORD(wParam) == IDCANCEL) {
-                EndDialog(hDlg, LOWORD(wParam));
-                return (INT_PTR)TRUE;
-            }
-            break;
+void LoadBitmapFromFile(HWND hwnd) {
+    OPENFILENAMEW ofn = {};
+    wchar_t szFile[260] = {0};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = hwnd;
+    ofn.lpstrFile = szFile;
+    ofn.nMaxFile = sizeof(szFile) / sizeof(wchar_t);
+    ofn.lpstrFilter = L"Bitmap (*.bmp)\0*.bmp\0All Files (*.*)\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_PATHMUSTEXIST | OFN_FILEMUSTEXIST;
+
+    if (GetOpenFileNameW(&ofn)) {
+        // --- FIX for bitmap loading ---
+        // Load the image as a DIB section, which is more robust and format-independent.
+        HBITMAP hbmLoaded = (HBITMAP)LoadImageW(NULL, ofn.lpstrFile, IMAGE_BITMAP, 0, 0, LR_LOADFROMFILE | LR_CREATEDIBSECTION);
+
+        if (hbmLoaded) {
+            SaveUndoState(); 
+
+            BITMAP bm;
+            GetObject(hbmLoaded, sizeof(BITMAP), &bm);
+
+            RECT rcWindow, rcClient;
+            GetWindowRect(hwnd, &rcWindow);
+            GetClientRect(hwnd, &rcClient);
+
+            int newWidth = bm.bmWidth;
+            int newHeight = bm.bmHeight;
+            
+            int windowWidth = newWidth + (rcWindow.right - rcWindow.left) - rcClient.right;
+            int windowHeight = newHeight + (rcWindow.bottom - rcWindow.top) - rcClient.bottom;
+
+            SetWindowPos(hwnd, NULL, 0, 0, windowWidth, windowHeight, SWP_NOMOVE | SWP_NOZORDER);
+            
+            CreateAndSizeBuffers(hwnd, newWidth, newHeight);
+
+            HDC hdcMem = CreateCompatibleDC(g_hdcBuffer);
+            SelectObject(hdcMem, hbmLoaded);
+            BitBlt(g_hdcBuffer, 0, 0, newWidth, newHeight, hdcMem, 0, 0, SRCCOPY);
+            
+            DeleteDC(hdcMem);
+            DeleteObject(hbmLoaded);
+
+            InvalidateRect(hwnd, NULL, TRUE);
+            UpdateWindow(hwnd);
+        } else {
+            MessageBoxW(hwnd, L"Failed to load bitmap file. The file may be corrupt or in an unsupported format.", L"Open Error", MB_OK | MB_ICONERROR);
+        }
     }
-    return (INT_PTR)FALSE;
 }
