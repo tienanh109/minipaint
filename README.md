@@ -39,6 +39,16 @@ build.cmd
 > 
 > Building for arm64 may cause errors.
 
+
+
+## How to Build installer 🛠️
+1. Open Inno Setup
+2. Open project file
+3. Build `setup.iss`
+
+> [!NOTE]
+> Make sure you have Inno Setup installed and available in your system PATH.
+
 ---
 
 ## Requirements ✅
