@@ -115,7 +115,7 @@ Expect bugs, limitations, and minimal features.
 
 ## Author 👤
 
-**tienanh109**
+**tienanh109** (Or Tien Anh)
 
 **GitHub:** [https://github.com/tienanh109](https://github.com/tienanh109)
 
